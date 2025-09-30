@@ -1,6 +1,7 @@
+package manager;
+
 import javax.imageio.ImageIO;
 import javax.swing.*;
-import javax.swing.border.*;
 import javax.swing.event.*;
 import javax.swing.text.*;
 import java.awt.*;
@@ -35,7 +36,7 @@ public class CodeSnippetManager extends JFrame {
     private static final Color ACCENT_COLOR = new Color(0, 122, 204);
 
     public CodeSnippetManager() {
-        setTitle("Code Snippet Manager");
+        setTitle("Code manager.Snippet Manager");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout());
 
@@ -99,7 +100,7 @@ public class CodeSnippetManager extends JFrame {
 
         // File menu
         JMenu fileMenu = new JMenu("File");
-        JMenuItem newSnippet = new JMenuItem("New Snippet");
+        JMenuItem newSnippet = new JMenuItem("New manager.Snippet");
         newSnippet.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_N, KeyEvent.CTRL_DOWN_MASK));
         newSnippet.addActionListener(e -> showNewSnippetDialog());
 
@@ -121,11 +122,11 @@ public class CodeSnippetManager extends JFrame {
 
         // Edit menu
         JMenu editMenu = new JMenu("Edit");
-        JMenuItem editSnippet = new JMenuItem("Edit Snippet");
+        JMenuItem editSnippet = new JMenuItem("Edit manager.Snippet");
         editSnippet.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_E, KeyEvent.CTRL_DOWN_MASK));
         editSnippet.addActionListener(e -> editSelectedSnippet());
 
-        JMenuItem deleteSnippet = new JMenuItem("Delete Snippet");
+        JMenuItem deleteSnippet = new JMenuItem("Delete manager.Snippet");
         deleteSnippet.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_DELETE, 0));
         deleteSnippet.addActionListener(e -> deleteSelectedSnippet());
 
@@ -425,7 +426,7 @@ public class CodeSnippetManager extends JFrame {
     }
 
     private void showNewSnippetDialog() {
-        JDialog dialog = new JDialog(this, "New Snippet", true);
+        JDialog dialog = new JDialog(this, "New manager.Snippet", true);
         dialog.setLayout(new BorderLayout());
         dialog.setSize(800, 600);
         dialog.setLocationRelativeTo(this);
@@ -499,7 +500,7 @@ public class CodeSnippetManager extends JFrame {
             refreshView();
             saveSnippets();
             dialog.dispose();
-            statusLabel.setText("Snippet added: " + title);
+            statusLabel.setText("manager.Snippet added: " + title);
         });
 
         JButton cancelButton = new JButton("Cancel");
@@ -522,7 +523,7 @@ public class CodeSnippetManager extends JFrame {
             return;
         }
 
-        JDialog dialog = new JDialog(this, "Edit Snippet", true);
+        JDialog dialog = new JDialog(this, "Edit manager.Snippet", true);
         dialog.setLayout(new BorderLayout());
         dialog.setSize(800, 600);
         dialog.setLocationRelativeTo(this);
@@ -586,7 +587,7 @@ public class CodeSnippetManager extends JFrame {
             refreshView();
             saveSnippets();
             dialog.dispose();
-            statusLabel.setText("Snippet updated: " + selected.title);
+            statusLabel.setText("manager.Snippet updated: " + selected.title);
         });
 
         JButton cancelButton = new JButton("Cancel");
@@ -618,7 +619,7 @@ public class CodeSnippetManager extends JFrame {
             allSnippets.remove(selected);
             refreshView();
             saveSnippets();
-            statusLabel.setText("Snippet deleted: " + selected.title);
+            statusLabel.setText("manager.Snippet deleted: " + selected.title);
         }
     }
 
