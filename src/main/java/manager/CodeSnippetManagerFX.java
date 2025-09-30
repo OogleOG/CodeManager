@@ -7,9 +7,7 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
-import javafx.scene.input.KeyCode;
-import javafx.scene.input.KeyCodeCombination;
-import javafx.scene.input.KeyCombination;
+import javafx.scene.input.*;
 import javafx.scene.layout.*;
 import javafx.scene.text.Font;
 import javafx.stage.DirectoryChooser;
@@ -711,11 +709,18 @@ public class CodeSnippetManagerFX extends Application {
         JSONObject responseJson = new JSONObject(response);
         String gistUrl = responseJson.getString("html_url"); // <-- THIS IS THE LINK
 
+        // Copy to clipboard
+        Clipboard clipboard = Clipboard.getSystemClipboard();
+        ClipboardContent clipboardContent = new ClipboardContent();
+        clipboardContent.putString(gistUrl);
+        clipboard.setContent(clipboardContent);
+
         // Show JavaFX popup
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
         alert.setTitle("Gist Created!");
         alert.setHeaderText("Your Gist was successfully created.");
-        alert.setContentText("You can view it here:\n" + gistUrl);
+        alert.setContentText("Your Gist link has been copied to your clipboard; You can now paste it.\n" + gistUrl);
+        //alert.setContentText("You can view it here:\n" + gistUrl);
         alert.showAndWait();
 
         System.out.println("Gist created successfully! Link: " + gistUrl);
