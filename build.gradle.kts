@@ -26,6 +26,7 @@ val javafxVersion = "20.0.2"
 
 dependencies {
     implementation("org.fxmisc.richtext:richtextfx:0.10.9") // latest version
+    implementation("org.json:json:20230618") // Latest stable as of now
     implementation("org.openjfx:javafx-base:$javafxVersion:$platform")
     implementation("org.openjfx:javafx-controls:$javafxVersion:$platform")
     implementation("org.openjfx:javafx-graphics:$javafxVersion:$platform")

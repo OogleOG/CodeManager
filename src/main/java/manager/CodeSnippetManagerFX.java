@@ -12,19 +12,28 @@ import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.input.KeyCombination;
 import javafx.scene.layout.*;
 import javafx.scene.text.Font;
+import javafx.stage.DirectoryChooser;
 import javafx.stage.FileChooser;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 import org.fxmisc.richtext.CodeArea;
 import org.fxmisc.richtext.LineNumberFactory;
+import org.json.JSONObject;
 
 import java.io.*;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+
+import java.io.OutputStream;
+import java.util.Map;
 
 public class CodeSnippetManagerFX extends Application {
     private final ObservableList<Snippet> snippets = FXCollections.observableArrayList();
@@ -33,6 +42,13 @@ public class CodeSnippetManagerFX extends Application {
     private final CodeArea previewArea = new CodeArea();
 
     private Button addBtn;
+
+    private static final String CONFIG_FILE = "config.properties";
+    private String githubToken = null;
+
+    public CodeSnippetManagerFX() {
+        TokenStorage.loadToken();
+    }
 
     private final File storageDir = new File("snippets");
 
@@ -181,11 +197,22 @@ public class CodeSnippetManagerFX extends Application {
         addBtn.setId("btnAdd");
         addBtn.getStyleClass().add("circle-button");
 
+        Button scanFolderBtn = new Button("Scan Folder");
+        scanFolderBtn.setOnAction(e -> {
+            DirectoryChooser chooser = new DirectoryChooser();
+            chooser.setTitle("Select Project Folder");
+            File folder = chooser.showDialog(owner);
+            if (folder != null && folder.isDirectory()) {
+                List<ProjectFunction> functions = indexProjectFolder(folder);
+                showFunctionSelectionDialog(functions, owner);
+            }
+        });
+
         Button imp = new Button("Import");
         Button exp = new Button("Export");
         Button prefs = new Button("Preferences");
 
-        ToolBar tb = new ToolBar(addBtn, new Separator(), imp, exp, new Region(), prefs);
+        ToolBar tb = new ToolBar(addBtn, scanFolderBtn, new Separator(), imp, exp, new Region(), prefs);
         HBox.setHgrow(tb.getItems().get(tb.getItems().size() - 1), Priority.ALWAYS);
         tb.setPadding(new Insets(6));
 
@@ -195,6 +222,222 @@ public class CodeSnippetManagerFX extends Application {
         prefs.setOnAction(e -> showPrefs(owner));
 
         return tb;
+    }
+
+    private void showFunctionSelectionDialog(List<ProjectFunction> functions, Stage owner) {
+        Stage dialog = new Stage();
+        dialog.initModality(Modality.APPLICATION_MODAL);
+        dialog.initOwner(owner);
+        dialog.setTitle("Select Function");
+
+        ListView<ProjectFunction> lv = new ListView<>();
+        lv.setItems(FXCollections.observableArrayList(functions));
+        lv.setCellFactory(list -> new ListCell<>() {
+            @Override
+            protected void updateItem(ProjectFunction item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                } else {
+                    setText(item.projectName + "/" + item.fileName + " :: " + item.functionName);
+                }
+            }
+        });
+
+        Button gistBtn = new Button("Create Gist");
+        gistBtn.setDisable(true);
+        lv.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) -> gistBtn.setDisable(newV == null));
+
+        gistBtn.setOnAction(e -> {
+            ProjectFunction selected = lv.getSelectionModel().getSelectedItem();
+            if (selected != null) {
+
+                // Skip empty functions
+                if (selected.code == null || selected.code.isBlank()) {
+                    Alert alert = new Alert(Alert.AlertType.WARNING);
+                    alert.setTitle("Empty Function");
+                    alert.setHeaderText(null);
+                    alert.setContentText("Cannot create gist: the selected function is empty.");
+                    alert.showAndWait();
+                    return;
+                }
+
+                Map<String, String> files = new HashMap<>();
+                files.put(selected.functionName + ".java", selected.code);
+
+                String description = selected.projectName + "/" + selected.fileName + " :: " + selected.functionName;
+
+                try {
+                    String githubToken = TokenStorage.loadToken(); // load the stored token
+                    if (githubToken == null) {
+                        githubToken = showTokenPrompt(owner); // your existing method to input token
+                    }
+                    createGist(description, true, files, githubToken);
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                    Alert alert = new Alert(Alert.AlertType.ERROR);
+                    alert.setTitle("Gist Error");
+                    alert.setHeaderText(null);
+                    alert.setContentText("Failed to create gist: " + ex.getMessage());
+                    alert.showAndWait();
+                }
+
+                dialog.close();
+            }
+        });
+
+
+        VBox layout = new VBox(8, lv, gistBtn);
+        layout.setPadding(new Insets(12));
+        Scene scene = new Scene(layout, 600, 400);
+        dialog.setScene(scene);
+        dialog.show();
+    }
+
+
+
+    // Prompt user for GitHub token
+    private String showTokenPrompt(Stage owner) {
+        TextInputDialog dialog = new TextInputDialog();
+        dialog.initOwner(owner);
+        dialog.setTitle("GitHub Token Required");
+        dialog.setHeaderText("Enter your GitHub Personal Access Token");
+        dialog.setContentText("Token:");
+        return dialog.showAndWait().orElse(null);
+    }
+
+    // Simple alert
+    private void showAlert(String message) {
+        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+        alert.setTitle("Info");
+        alert.setHeaderText(null);
+        alert.setContentText(message);
+        alert.showAndWait();
+    }
+
+
+
+    private void loadToken() {
+        Properties props = new Properties();
+        File file = new File(CONFIG_FILE);
+        if (file.exists()) {
+            try (FileInputStream fis = new FileInputStream(file)) {
+                props.load(fis);
+                githubToken = props.getProperty("github.token").trim();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    // Save token to file
+    private void saveToken() {
+        Properties props = new Properties();
+        props.setProperty("github.token", githubToken != null ? githubToken : "");
+        try (FileOutputStream fos = new FileOutputStream(CONFIG_FILE)) {
+            props.store(fos, "CodeSnippetManager Config");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private List<ProjectFunction> indexProjectFolder(File folder) {
+        List<ProjectFunction> functions = new ArrayList<>();
+        if (folder == null || !folder.isDirectory()) {
+            System.out.println("Invalid folder: " + folder);
+            return functions;
+        }
+
+        try {
+            Files.walk(folder.toPath())
+                    .filter(Files::isRegularFile)
+                    .forEach(file -> {
+                        String lang = getLanguage(file.getFileName().toString());
+                        if (lang == null) {
+                            System.out.println("Skipping file (unknown language): " + file);
+                            return;
+                        }
+
+                        System.out.println("Scanning file: " + file + " (language: " + lang + ")");
+                        try {
+                            String content = Files.readString(file);
+                            List<ProjectFunction> fileFunctions = parseFunctions(lang, content, file);
+                            System.out.println("Found " + fileFunctions.size() + " functions in " + file);
+                            functions.addAll(fileFunctions);
+                        } catch (IOException ex) {
+                            System.out.println("Error reading file: " + file);
+                            ex.printStackTrace();
+                        }
+                    });
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        System.out.println("Total functions indexed: " + functions.size());
+        return functions;
+    }
+
+    private List<ProjectFunction> parseFunctions(String language, String content, Path file) {
+        List<ProjectFunction> result = new ArrayList<>();
+        Pattern pattern;
+
+        switch (language.toLowerCase()) {
+            case "java", "c++", "c#" -> pattern = Pattern.compile(
+                    "(?:public|protected|private|static|\\s)+[\\w<>\\[\\]]+\\s+(\\w+)\\s*\\(([^)]*)\\)\\s*\\{"
+            );
+            case "python" -> pattern = Pattern.compile(
+                    "^\\s*def\\s+(\\w+)\\s*\\(([^)]*)\\):", Pattern.MULTILINE
+            );
+            case "javascript" -> pattern = Pattern.compile(
+                    "function\\s+(\\w+)\\s*\\(([^)]*)\\)|([\\w]+)\\s*=\\s*\\(([^)]*)\\)\\s*=>"
+            );
+            default -> {
+                System.out.println("No regex for language: " + language);
+                return result;
+            }
+        }
+
+        Matcher matcher = pattern.matcher(content);
+        while (matcher.find()) {
+            String fnName = matcher.group(1) != null ? matcher.group(1) :
+                    (matcher.group(3) != null ? matcher.group(3) : "unknown");
+            int start = matcher.start();
+            int end = findFunctionEnd(content, start, language);
+            String codeSnippet = content.substring(start, end);
+
+            String projectName = file.getParent() != null ? file.getParent().getFileName().toString() : "UnknownProject";
+
+            result.add(new ProjectFunction(projectName, file.getFileName().toString(), language, fnName, codeSnippet, file.toFile().toPath()));
+            System.out.println("Parsed function: " + fnName + " in " + file);
+        }
+
+        return result;
+    }
+
+
+    private int findFunctionEnd(String content, int start, String language) {
+        // naive: find next closing brace or newline for Python
+        if (language.equalsIgnoreCase("python")) {
+            int nextFn = content.indexOf("\ndef ", start + 1);
+            return nextFn > 0 ? nextFn : content.length();
+        } else {
+            int braceCount = 0;
+            for (int i = start; i < content.length(); i++) {
+                char c = content.charAt(i);
+                if (c == '{') braceCount++;
+                else if (c == '}') braceCount--;
+                if (braceCount == 0) return i + 1;
+            }
+            return content.length();
+        }
+    }
+
+
+    private String getLanguage(String fileName) {
+        if (fileName.endsWith(".java")) return "java";
+        if (fileName.endsWith(".py")) return "python";
+        if (fileName.endsWith(".js")) return "javascript";
+        return null;
     }
 
 
@@ -419,6 +662,98 @@ public class CodeSnippetManagerFX extends Application {
     private String encodeCss(String css) {
         return css.replace("#", "%23").replace("\n", "");
     }
+
+    public void createGist(String description, boolean isPublic, Map<String, String> files, String githubToken) throws Exception {
+        if (files == null || files.isEmpty()) {
+            throw new IllegalArgumentException("Gist must contain at least one file.");
+        }
+
+        JSONObject json = new JSONObject();
+        json.put("description", description);
+        json.put("public", isPublic);
+
+        JSONObject filesJson = new JSONObject();
+        for (Map.Entry<String, String> entry : files.entrySet()) {
+            String filename = entry.getKey();
+            String content = entry.getValue();
+
+            if (content == null || content.isBlank()) {
+                throw new IllegalArgumentException("File content cannot be empty: " + filename);
+            }
+
+            // Sanitize filename (no slashes, colons, or other invalid chars)
+            filename = filename.replaceAll("[^a-zA-Z0-9_\\-\\.]", "_");
+
+            JSONObject fileContent = new JSONObject();
+            fileContent.put("content", content);
+            filesJson.put(filename, fileContent);
+        }
+        json.put("files", filesJson);
+
+        System.out.println("Gist JSON: " + json.toString(2)); // debug
+
+        URL url = new URL("https://api.github.com/gists");
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        connection.setRequestMethod("POST");
+        connection.setRequestProperty("Authorization", "token " + githubToken);
+        connection.setRequestProperty("Accept", "application/vnd.github+json");
+        connection.setDoOutput(true);
+
+        try (OutputStream os = connection.getOutputStream()) {
+            os.write(json.toString().getBytes(StandardCharsets.UTF_8));
+        }
+
+        int responseCode = connection.getResponseCode();
+        if (responseCode != 201) {
+            try (InputStream errorStream = connection.getErrorStream()) {
+                if (errorStream != null) {
+                    String response = new String(errorStream.readAllBytes(), StandardCharsets.UTF_8);
+                    System.err.println("GitHub response: " + response);
+                }
+            }
+            throw new RuntimeException("Failed to create gist: " + responseCode);
+        }
+
+        System.out.println("Gist created successfully!");
+    }
+
+
+
+    // Escape quotes and newlines in code for JSON
+    private String escapeForJson(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t");
+    }
+
+    private String getGithubToken(Stage owner) {
+        // Try to load token from storage
+        String token = TokenStorage.loadToken();
+        if (token != null && !token.isEmpty()) {
+            System.out.println("Using stored token.");
+            return token;
+        }
+
+        // Token not found, prompt user
+        TextInputDialog dialog = new TextInputDialog();
+        dialog.initOwner(owner);
+        dialog.setTitle("GitHub Token Required");
+        dialog.setHeaderText("Enter your GitHub Personal Access Token (with Gist permissions):");
+        dialog.setContentText("Token:");
+
+        dialog.showAndWait().ifPresent(input -> {
+            TokenStorage.saveToken(input);
+            System.out.println("Token saved.");
+        });
+
+        // Reload token after saving
+        return TokenStorage.loadToken();
+    }
+
+
 
     // Model
     public static class Snippet {
