@@ -230,8 +230,15 @@ public class CodeSnippetManagerFX extends Application {
         dialog.initOwner(owner);
         dialog.setTitle("Select Function");
 
+        // Filter out empty functions
+        List<ProjectFunction> nonEmptyFunctions = functions.stream()
+                .filter(f -> f.code != null && !f.code.replaceAll("[\\s{}]", "").isEmpty())
+                .collect(Collectors.toList());
+
+
         ListView<ProjectFunction> lv = new ListView<>();
-        lv.setItems(FXCollections.observableArrayList(functions));
+        lv.setItems(FXCollections.observableArrayList(nonEmptyFunctions));
+
         lv.setCellFactory(list -> new ListCell<>() {
             @Override
             protected void updateItem(ProjectFunction item, boolean empty) {
@@ -251,41 +258,22 @@ public class CodeSnippetManagerFX extends Application {
         gistBtn.setOnAction(e -> {
             ProjectFunction selected = lv.getSelectionModel().getSelectedItem();
             if (selected != null) {
-
-                // Skip empty functions
-                if (selected.code == null || selected.code.isBlank()) {
-                    Alert alert = new Alert(Alert.AlertType.WARNING);
-                    alert.setTitle("Empty Function");
-                    alert.setHeaderText(null);
-                    alert.setContentText("Cannot create gist: the selected function is empty.");
-                    alert.showAndWait();
-                    return;
-                }
-
-                Map<String, String> files = new HashMap<>();
-                files.put(selected.functionName + ".java", selected.code);
+                Map<String, String> filesMap = new HashMap<>();
+                filesMap.put(selected.functionName + ".java", selected.code);
 
                 String description = selected.projectName + "/" + selected.fileName + " :: " + selected.functionName;
 
                 try {
-                    String githubToken = TokenStorage.loadToken(); // load the stored token
-                    if (githubToken == null) {
-                        githubToken = showTokenPrompt(owner); // your existing method to input token
-                    }
-                    createGist(description, true, files, githubToken);
+                    String githubToken = getGithubToken(owner); // get token (prompt if needed)
+                    System.out.println("Using token: '" + githubToken + "'");
+                    createGist(description, true, filesMap, githubToken); // pass token
                 } catch (Exception ex) {
                     ex.printStackTrace();
-                    Alert alert = new Alert(Alert.AlertType.ERROR);
-                    alert.setTitle("Gist Error");
-                    alert.setHeaderText(null);
-                    alert.setContentText("Failed to create gist: " + ex.getMessage());
-                    alert.showAndWait();
                 }
 
                 dialog.close();
             }
         });
-
 
         VBox layout = new VBox(8, lv, gistBtn);
         layout.setPadding(new Insets(12));
@@ -293,8 +281,6 @@ public class CodeSnippetManagerFX extends Application {
         dialog.setScene(scene);
         dialog.show();
     }
-
-
 
     // Prompt user for GitHub token
     private String showTokenPrompt(Stage owner) {
@@ -361,7 +347,7 @@ public class CodeSnippetManagerFX extends Application {
                         System.out.println("Scanning file: " + file + " (language: " + lang + ")");
                         try {
                             String content = Files.readString(file);
-                            List<ProjectFunction> fileFunctions = parseFunctions(lang, content, file);
+                            List<ProjectFunction> fileFunctions = parseFunctions(content, file, lang);
                             System.out.println("Found " + fileFunctions.size() + " functions in " + file);
                             functions.addAll(fileFunctions);
                         } catch (IOException ex) {
@@ -376,42 +362,51 @@ public class CodeSnippetManagerFX extends Application {
         System.out.println("Total functions indexed: " + functions.size());
         return functions;
     }
+    private static final Pattern FUNCTION_PATTERN = Pattern.compile(
+            "(public|protected|private|static|\\s)+[\\w\\<\\>\\[\\]]+\\s+(\\w+)\\s*\\([^)]*\\)\\s*\\{"
+    );
 
-    private List<ProjectFunction> parseFunctions(String language, String content, Path file) {
-        List<ProjectFunction> result = new ArrayList<>();
-        Pattern pattern;
+    public static List<ProjectFunction> parseFunctions(String content, Path filePath, String projectName) throws IOException {
+        List<ProjectFunction> functions = new ArrayList<>();
+        String c = new String(Files.readAllBytes(filePath));
 
-        switch (language.toLowerCase()) {
-            case "java", "c++", "c#" -> pattern = Pattern.compile(
-                    "(?:public|protected|private|static|\\s)+[\\w<>\\[\\]]+\\s+(\\w+)\\s*\\(([^)]*)\\)\\s*\\{"
-            );
-            case "python" -> pattern = Pattern.compile(
-                    "^\\s*def\\s+(\\w+)\\s*\\(([^)]*)\\):", Pattern.MULTILINE
-            );
-            case "javascript" -> pattern = Pattern.compile(
-                    "function\\s+(\\w+)\\s*\\(([^)]*)\\)|([\\w]+)\\s*=\\s*\\(([^)]*)\\)\\s*=>"
-            );
-            default -> {
-                System.out.println("No regex for language: " + language);
-                return result;
+        Matcher matcher = FUNCTION_PATTERN.matcher(content);
+        while (matcher.find()) {
+            String signature = matcher.group();
+            String functionName = matcher.group(2);
+
+            // Find the body starting at matcher.end() - 1 (after the opening brace)
+            int start = matcher.end() - 1;
+            int end = findMatchingBrace(content, start);
+            if (end > start) {
+                String codeBody = content.substring(start + 1, end).trim();
+                if (!codeBody.isEmpty()) {
+                    functions.add(new ProjectFunction(
+                            projectName,
+                            filePath.getFileName().toString(),
+                            "java",
+                            functionName,
+                            codeBody,
+                            filePath
+                    ));
+                }
             }
         }
 
-        Matcher matcher = pattern.matcher(content);
-        while (matcher.find()) {
-            String fnName = matcher.group(1) != null ? matcher.group(1) :
-                    (matcher.group(3) != null ? matcher.group(3) : "unknown");
-            int start = matcher.start();
-            int end = findFunctionEnd(content, start, language);
-            String codeSnippet = content.substring(start, end);
+        return functions;
+    }
 
-            String projectName = file.getParent() != null ? file.getParent().getFileName().toString() : "UnknownProject";
-
-            result.add(new ProjectFunction(projectName, file.getFileName().toString(), language, fnName, codeSnippet, file.toFile().toPath()));
-            System.out.println("Parsed function: " + fnName + " in " + file);
+    private static int findMatchingBrace(String text, int openIndex) {
+        int depth = 0;
+        for (int i = openIndex; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c == '{') depth++;
+            else if (c == '}') {
+                depth--;
+                if (depth == 0) return i;
+            }
         }
-
-        return result;
+        return -1; // no match found
     }
 
 
@@ -681,7 +676,7 @@ public class CodeSnippetManagerFX extends Application {
                 throw new IllegalArgumentException("File content cannot be empty: " + filename);
             }
 
-            // Sanitize filename (no slashes, colons, or other invalid chars)
+            // Sanitize filename
             filename = filename.replaceAll("[^a-zA-Z0-9_\\-\\.]", "_");
 
             JSONObject fileContent = new JSONObject();
@@ -704,17 +699,26 @@ public class CodeSnippetManagerFX extends Application {
         }
 
         int responseCode = connection.getResponseCode();
+        InputStream inputStream = (responseCode == 201) ? connection.getInputStream() : connection.getErrorStream();
+        String response = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
+
         if (responseCode != 201) {
-            try (InputStream errorStream = connection.getErrorStream()) {
-                if (errorStream != null) {
-                    String response = new String(errorStream.readAllBytes(), StandardCharsets.UTF_8);
-                    System.err.println("GitHub response: " + response);
-                }
-            }
+            System.err.println("GitHub response: " + response);
             throw new RuntimeException("Failed to create gist: " + responseCode);
         }
 
-        System.out.println("Gist created successfully!");
+        // Parse response JSON
+        JSONObject responseJson = new JSONObject(response);
+        String gistUrl = responseJson.getString("html_url"); // <-- THIS IS THE LINK
+
+        // Show JavaFX popup
+        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+        alert.setTitle("Gist Created!");
+        alert.setHeaderText("Your Gist was successfully created.");
+        alert.setContentText("You can view it here:\n" + gistUrl);
+        alert.showAndWait();
+
+        System.out.println("Gist created successfully! Link: " + gistUrl);
     }
 
 
