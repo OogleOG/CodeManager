@@ -7,7 +7,6 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
-import javafx.scene.image.Image;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.input.KeyCombination;
@@ -43,14 +42,14 @@ public class CodeSnippetManagerFX extends Application {
 
     @Override
     public void start(Stage primaryStage) {
-        // Load data
+        // Load snippets
         if (!storageDir.exists()) storageDir.mkdirs();
         loadSnippets();
 
-        // Top toolbar
+        // Toolbar
         ToolBar toolBar = createToolBar(primaryStage);
 
-        // Left: list + search
+        // Left pane (list + search)
         VBox leftPane = new VBox(8);
         leftPane.setPadding(new Insets(12));
         Label mySnips = new Label("Snippets");
@@ -94,7 +93,7 @@ public class CodeSnippetManagerFX extends Application {
         leftPane.getChildren().addAll(mySnips, searchRow, listView);
         leftPane.setPrefWidth(320);
 
-        // Right: preview / editor
+        // Right pane (editor/preview)
         VBox rightPane = new VBox(8);
         rightPane.setPadding(new Insets(12));
         HBox header = new HBox(8);
@@ -106,20 +105,29 @@ public class CodeSnippetManagerFX extends Application {
         Button editBtn = new Button("Edit");
         Button deleteBtn = new Button("Delete");
         editBtn.disableProperty().bind(listView.getSelectionModel().selectedItemProperty().isNull());
+        editBtn.setOnAction(e -> {
+            Snippet selected = listView.getSelectionModel().getSelectedItem();
+            if (selected != null) {
+                showSnippetDialog(selected, primaryStage);
+            }
+        });
         deleteBtn.disableProperty().bind(listView.getSelectionModel().selectedItemProperty().isNull());
         header.getChildren().addAll(previewTitle, spacer, editBtn, deleteBtn);
 
         previewArea.setEditable(false);
         previewArea.setWrapText(true);
         previewArea.setParagraphGraphicFactory(LineNumberFactory.get(previewArea));
+
+        // Enhanced syntax highlighting
         previewArea.getStylesheets().add("data:text/css," + encodeCss(
                 ".keyword { -fx-fill: #0000ff; -fx-font-weight: bold; }" +
-                        ".comment { -fx-fill: #008000; }" +
-                        ".string { -fx-fill: #a31515; }"
+                        ".comment { -fx-fill: #008000; font-style: italic; }" +
+                        ".string { -fx-fill: #a31515; }" +
+                        ".number { -fx-fill: #098658; }" +
+                        ".annotation { -fx-fill: #646695; }" +
+                        ".operator { -fx-fill: #aa22ff; }"
         ));
 
-
-        // Metadata strip
         HBox metaStrip = new HBox(12);
         metaStrip.setPadding(new Insets(6, 0, 6, 0));
         Label emptyMeta = new Label("");
@@ -127,36 +135,46 @@ public class CodeSnippetManagerFX extends Application {
 
         rightPane.getChildren().addAll(header, metaStrip, previewArea);
 
-        // Layout split pane
+        // Layout
         SplitPane split = new SplitPane(leftPane, rightPane);
         split.setDividerPositions(0.32);
-
         BorderPane root = new BorderPane();
         root.setTop(toolBar);
         root.setCenter(split);
 
-        // Styling
         Scene scene = new Scene(root, 1000, 640);
         scene.getStylesheets().add("data:text/css," + encodeCss(getCss()));
 
         addBtn.setOnAction(e -> showSnippetDialog(null, primaryStage));
         deleteBtn.setOnAction(e -> deleteSelected());
 
-        // Keyboard shortcuts
-        scene.getAccelerators().put(new KeyCodeCombination(KeyCode.N, KeyCombination.SHORTCUT_DOWN), () -> showSnippetDialog(null, primaryStage));
-        scene.getAccelerators().put(new KeyCodeCombination(KeyCode.F, KeyCombination.SHORTCUT_DOWN), () -> searchField.requestFocus());
+        scene.getAccelerators().put(new KeyCodeCombination(KeyCode.N, KeyCombination.SHORTCUT_DOWN),
+                () -> showSnippetDialog(null, primaryStage));
+        scene.getAccelerators().put(new KeyCodeCombination(KeyCode.F, KeyCombination.SHORTCUT_DOWN),
+                searchField::requestFocus);
 
-        primaryStage.setTitle("Code manager.Snippet Manager");
-        // set window icon if available - place codemanager.png next to jar
-        try {
-            InputStream is = new FileInputStream("icons/codemanager.png");
-            Image ico = new Image(is);
-            primaryStage.getIcons().add(ico);
-        } catch (Exception ignored) {}
+        primaryStage.setTitle("Code Manager / Snippet Manager");
+
+        // Load taskbar icons correctly from classpath
+        int[] sizes = {16, 32, 48, 64, 128};
+        for (int size : sizes) {
+            try {
+                InputStream is = getClass().getResourceAsStream("/icons/icon_" + size + "x" + size + ".png");
+                if (is != null) {
+                    javafx.scene.image.Image fxIcon = new javafx.scene.image.Image(is);
+                    primaryStage.getIcons().add(fxIcon);
+                } else {
+                    System.out.println("Icon not found: " + size + "x" + size);
+                }
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            }
+        }
 
         primaryStage.setScene(scene);
         primaryStage.show();
     }
+
 
     private ToolBar createToolBar(Stage owner) {
         addBtn = new Button("+"); // assign to the field!
@@ -168,7 +186,7 @@ public class CodeSnippetManagerFX extends Application {
         Button prefs = new Button("Preferences");
 
         ToolBar tb = new ToolBar(addBtn, new Separator(), imp, exp, new Region(), prefs);
-        HBox.setHgrow(tb.getItems().get(tb.getItems().size()-1), Priority.ALWAYS);
+        HBox.setHgrow(tb.getItems().get(tb.getItems().size() - 1), Priority.ALWAYS);
         tb.setPadding(new Insets(6));
 
         // actions
@@ -187,29 +205,19 @@ public class CodeSnippetManagerFX extends Application {
         String code = s.code;
         previewArea.replaceText(code);
 
-        // Define patterns
-        String KEYWORDS = "\\b(abstract|assert|boolean|break|byte|case|catch|char|class|const|continue|default|do|double|else|enum|extends|final|finally|float|for|goto|if|implements|import|instanceof|int|interface|long|native|new|package|private|protected|public|return|short|static|strictfp|super|switch|synchronized|this|throw|throws|transient|try|void|volatile|while)\\b";
-        String COMMENTS = "//[^\n]*" + "|" + "/\\*(.|\\R)*?\\*/";
-        String STRINGS = "\"([^\"\\\\]|\\\\.)*\"";
+        String langKey = s.language.toLowerCase().trim();
+        LanguageSyntax syntax = LANGUAGE_SYNTAX.getOrDefault(langKey, LANGUAGE_SYNTAX.get("java")); // default to Java
 
-        Pattern pattern = Pattern.compile(
-                "(?<KEYWORD>" + KEYWORDS + ")"
-                        + "|(?<COMMENT>" + COMMENTS + ")"
-                        + "|(?<STRING>" + STRINGS + ")"
-        );
-
-        Matcher matcher = pattern.matcher(code);
+        Matcher matcher = syntax.pattern.matcher(code);
         while (matcher.find()) {
-            if (matcher.group("KEYWORD") != null) {
-                previewArea.setStyleClass(matcher.start(), matcher.end(), "keyword");
-            } else if (matcher.group("COMMENT") != null) {
-                previewArea.setStyleClass(matcher.start(), matcher.end(), "comment");
-            } else if (matcher.group("STRING") != null) {
-                previewArea.setStyleClass(matcher.start(), matcher.end(), "string");
+            for (Map.Entry<String, String> entry : syntax.styleMap.entrySet()) {
+                if (matcher.group(entry.getKey()) != null) {
+                    previewArea.setStyleClass(matcher.start(), matcher.end(), entry.getValue());
+                    break;
+                }
             }
         }
     }
-
 
     private void applyFilter(String q) {
         String ql = q == null ? "" : q.trim().toLowerCase();
@@ -260,9 +268,13 @@ public class CodeSnippetManagerFX extends Application {
         cancel.setOnAction(e -> d.close());
         save.setOnAction(e -> {
             String t = title.getText().trim();
-            if (t.isEmpty()) { alert("Validation", "Title is required"); return; }
+            if (t.isEmpty()) {
+                alert("Validation", "Title is required");
+                return;
+            }
             Snippet s;
-            if (base == null) s = new Snippet(t, code.getText(), language.getText().trim(), tags.getText().trim(), desc.getText().trim());
+            if (base == null)
+                s = new Snippet(t, code.getText(), language.getText().trim(), tags.getText().trim(), desc.getText().trim());
             else {
                 s = new Snippet(t, code.getText(), language.getText().trim(), tags.getText().trim(), desc.getText().trim());
                 s.dateCreated = base.dateCreated;
@@ -309,13 +321,19 @@ public class CodeSnippetManagerFX extends Application {
             Snippet s = Snippet.fromProperties(p);
             saveSnippetToFile(s);
             snippets.add(s);
-        } catch (Exception ex) { ex.printStackTrace(); alert("Import error", ex.getMessage()); }
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            alert("Import error", ex.getMessage());
+        }
     }
 
     private void exportSnippets(Stage owner) {
         // Export all to a zip (simple implementation omitted) - for demo export first selected
         Snippet s = listView.getSelectionModel().getSelectedItem();
-        if (s == null) { alert("Export", "Select a snippet to export."); return; }
+        if (s == null) {
+            alert("Export", "Select a snippet to export.");
+            return;
+        }
         FileChooser fc = new FileChooser();
         fc.setTitle("Export snippet");
         fc.setInitialFileName(s.slug() + ".properties");
@@ -324,7 +342,10 @@ public class CodeSnippetManagerFX extends Application {
         try (OutputStream os = new FileOutputStream(f)) {
             Properties p = s.toProperties();
             p.store(new OutputStreamWriter(os, StandardCharsets.UTF_8), "CodeSnippet");
-        } catch (Exception ex) { ex.printStackTrace(); alert("Export error", ex.getMessage()); }
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            alert("Export error", ex.getMessage());
+        }
     }
 
     private void showPrefs(Stage owner) {
@@ -348,7 +369,9 @@ public class CodeSnippetManagerFX extends Application {
                 p.store(new OutputStreamWriter(os, StandardCharsets.UTF_8), "CodeSnippet");
             }
             s.sourceFile = f;
-        } catch (Exception ex) { ex.printStackTrace(); }
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
     }
 
     private void loadSnippets() {
@@ -362,7 +385,9 @@ public class CodeSnippetManagerFX extends Application {
                 Snippet s = Snippet.fromProperties(p);
                 s.sourceFile = f;
                 snippets.add(s);
-            } catch (Exception ex) { ex.printStackTrace(); }
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            }
         }
         // sort by lastModified desc
         snippets.sort(Comparator.comparing((Snippet a) -> a.lastModified).reversed());
@@ -436,14 +461,23 @@ public class CodeSnippetManagerFX extends Application {
             String codeB64 = p.getProperty("code", "");
             String code = "";
             if (!codeB64.isEmpty()) {
-                try { code = new String(Base64.getDecoder().decode(codeB64), StandardCharsets.UTF_8); } catch (Exception ignored) {}
+                try {
+                    code = new String(Base64.getDecoder().decode(codeB64), StandardCharsets.UTF_8);
+                } catch (Exception ignored) {
+                }
             }
             String language = p.getProperty("language", "");
             String tags = p.getProperty("tags", "");
             String desc = p.getProperty("description", "");
             Snippet s = new Snippet(title, code, language, tags, desc);
-            try { s.dateCreated = new Date(Long.parseLong(p.getProperty("dateCreated", Long.toString(new Date().getTime())))); } catch (Exception ignored) {}
-            try { s.lastModified = new Date(Long.parseLong(p.getProperty("lastModified", Long.toString(new Date().getTime())))); } catch (Exception ignored) {}
+            try {
+                s.dateCreated = new Date(Long.parseLong(p.getProperty("dateCreated", Long.toString(new Date().getTime()))));
+            } catch (Exception ignored) {
+            }
+            try {
+                s.lastModified = new Date(Long.parseLong(p.getProperty("lastModified", Long.toString(new Date().getTime()))));
+            } catch (Exception ignored) {
+            }
             return s;
         }
 
@@ -457,7 +491,169 @@ public class CodeSnippetManagerFX extends Application {
         }
 
         @Override
-        public String toString() { return title; }
+        public String toString() {
+            return title;
+        }
+    }
+
+    private static final Map<String, LanguageSyntax> LANGUAGE_SYNTAX = new HashMap<>();
+
+    static {
+        // Java syntax
+        String javaKeywords = "\\b(abstract|assert|boolean|break|byte|case|catch|char|class|const|continue|" +
+                "default|do|double|else|enum|extends|final|finally|float|for|goto|if|implements|import|" +
+                "instanceof|int|interface|long|native|new|package|private|protected|public|return|short|" +
+                "static|strictfp|super|switch|synchronized|this|throw|throws|transient|try|void|volatile|while)\\b";
+        String javaComments = "//[^\n]*|/\\*(.|\\R)*?\\*/";
+        String javaStrings = "\"([^\"\\\\]|\\\\.)*\"";
+        String javaNumbers = "\\b\\d+(\\.\\d+)?\\b";
+        String javaAnnotations = "@\\w+";
+        String javaOperators = "[+\\-*/%=!<>&|^~?:]+";
+        Pattern javaPattern = Pattern.compile(
+                "(?<KEYWORD>" + javaKeywords + ")"
+                        + "|(?<COMMENT>" + javaComments + ")"
+                        + "|(?<STRING>" + javaStrings + ")"
+                        + "|(?<NUMBER>" + javaNumbers + ")"
+                        + "|(?<ANNOTATION>" + javaAnnotations + ")"
+                        + "|(?<OPERATOR>" + javaOperators + ")"
+        );
+        Map<String, String> javaStyles = Map.of(
+                "KEYWORD", "keyword",
+                "COMMENT", "comment",
+                "STRING", "string",
+                "NUMBER", "number",
+                "ANNOTATION", "annotation",
+                "OPERATOR", "operator"
+        );
+        LANGUAGE_SYNTAX.put("java", new LanguageSyntax(javaPattern, javaStyles));
+
+        // Python syntax
+        String pyKeywords = "\\b(False|None|True|and|as|assert|async|await|break|class|continue|def|del|elif|else|except|" +
+                "finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield)\\b";
+        String pyComments = "#[^\\n]*";
+        String pyStrings = "\"\"\"(.|\\R)*?\"\"\"|'''(.|\\R)*?'''|\"([^\"\\\\]|\\\\.)*\"|'([^'\\\\]|\\\\.)*'";
+        String pyNumbers = "\\b\\d+(\\.\\d+)?\\b";
+        String pyOperators = "[+\\-*/%=!<>&|^~?:]+";
+        Pattern pyPattern = Pattern.compile(
+                "(?<KEYWORD>" + pyKeywords + ")"
+                        + "|(?<COMMENT>" + pyComments + ")"
+                        + "|(?<STRING>" + pyStrings + ")"
+                        + "|(?<NUMBER>" + pyNumbers + ")"
+                        + "|(?<OPERATOR>" + pyOperators + ")"
+        );
+        Map<String, String> pyStyles = Map.of(
+                "KEYWORD", "keyword",
+                "COMMENT", "comment",
+                "STRING", "string",
+                "NUMBER", "number",
+                "OPERATOR", "operator"
+        );
+        LANGUAGE_SYNTAX.put("python", new LanguageSyntax(pyPattern, pyStyles));
+
+        // JavaScript syntax
+        String jsKeywords = "\\b(break|case|catch|class|const|continue|debugger|default|delete|do|else|export|extends|" +
+                "finally|for|function|if|import|in|instanceof|let|new|return|super|switch|this|throw|try|typeof|var|void|while|with|yield)\\b";
+        String jsComments = "//[^\\n]*|/\\*(.|\\R)*?\\*/";
+        String jsStrings = "\"([^\"\\\\]|\\\\.)*\"|'([^'\\\\]|\\\\.)*'|`([^`\\\\]|\\\\.)*`";
+        String jsNumbers = "\\b\\d+(\\.\\d+)?\\b";
+        String jsOperators = "[+\\-*/%=!<>&|^~?:]+";
+        Pattern jsPattern = Pattern.compile(
+                "(?<KEYWORD>" + jsKeywords + ")"
+                        + "|(?<COMMENT>" + jsComments + ")"
+                        + "|(?<STRING>" + jsStrings + ")"
+                        + "|(?<NUMBER>" + jsNumbers + ")"
+                        + "|(?<OPERATOR>" + jsOperators + ")"
+        );
+        Map<String, String> jsStyles = Map.of(
+                "KEYWORD", "keyword",
+                "COMMENT", "comment",
+                "STRING", "string",
+                "NUMBER", "number",
+                "OPERATOR", "operator"
+        );
+        LANGUAGE_SYNTAX.put("javascript", new LanguageSyntax(jsPattern, jsStyles));
+
+        // C++ syntax
+        String cppKeywords = "\\b(alignas|alignof|and|and_eq|asm|atomic_cancel|atomic_commit|atomic_noexcept|" +
+                "auto|bitand|bitor|bool|break|case|catch|char|char16_t|char32_t|class|compl|const|constexpr|const_cast|continue|" +
+                "decltype|default|delete|do|double|dynamic_cast|else|enum|explicit|export|extern|false|float|for|friend|goto|if|" +
+                "inline|int|long|mutable|namespace|new|noexcept|not|not_eq|nullptr|operator|or|or_eq|private|protected|public|" +
+                "register|reinterpret_cast|return|short|signed|sizeof|static|static_assert|static_cast|struct|switch|template|" +
+                "this|thread_local|throw|true|try|typedef|typeid|typename|union|unsigned|using|virtual|void|volatile|wchar_t|while|xor|xor_eq)\\b";
+        String cppComments = "//[^\\n]*|/\\*(.|\\R)*?\\*/";
+        String cppStrings = "\"([^\"\\\\]|\\\\.)*\"|'([^'\\\\]|\\\\.)*'";
+        String cppNumbers = "\\b\\d+(\\.\\d+)?\\b";
+        String cppOperators = "[+\\-*/%=!<>&|^~?:]+";
+        Pattern cppPattern = Pattern.compile(
+                "(?<KEYWORD>" + cppKeywords + ")"
+                        + "|(?<COMMENT>" + cppComments + ")"
+                        + "|(?<STRING>" + cppStrings + ")"
+                        + "|(?<NUMBER>" + cppNumbers + ")"
+                        + "|(?<OPERATOR>" + cppOperators + ")"
+        );
+        Map<String, String> cppStyles = Map.of(
+                "KEYWORD", "keyword",
+                "COMMENT", "comment",
+                "STRING", "string",
+                "NUMBER", "number",
+                "OPERATOR", "operator"
+        );
+        LANGUAGE_SYNTAX.put("cpp", new LanguageSyntax(cppPattern, cppStyles));
+
+        // SQL syntax
+        String sqlKeywords = "\\b(SELECT|FROM|WHERE|INSERT|INTO|VALUES|UPDATE|SET|DELETE|CREATE|TABLE|ALTER|DROP|JOIN|" +
+                "INNER|LEFT|RIGHT|FULL|ON|AS|AND|OR|NOT|NULL|DISTINCT|GROUP|BY|ORDER|HAVING|LIMIT|OFFSET)\\b";
+        String sqlComments = "--[^\\n]*|/\\*(.|\\R)*?\\*/";
+        String sqlStrings = "'([^'\\\\]|\\\\.)*'";
+        String sqlNumbers = "\\b\\d+(\\.\\d+)?\\b";
+        Pattern sqlPattern = Pattern.compile(
+                "(?<KEYWORD>" + sqlKeywords + ")"
+                        + "|(?<COMMENT>" + sqlComments + ")"
+                        + "|(?<STRING>" + sqlStrings + ")"
+                        + "|(?<NUMBER>" + sqlNumbers + ")"
+        );
+        Map<String, String> sqlStyles = Map.of(
+                "KEYWORD", "keyword",
+                "COMMENT", "comment",
+                "STRING", "string",
+                "NUMBER", "number"
+        );
+        LANGUAGE_SYNTAX.put("sql", new LanguageSyntax(sqlPattern, sqlStyles));
+
+        // HTML syntax
+        String htmlTags = "</?[a-zA-Z][^>]*>";
+        String htmlComments = "<!--(.|\\R)*?-->";
+        String htmlStrings = "\"([^\"]*)\"|'([^']*)'";
+        Pattern htmlPattern = Pattern.compile(
+                "(?<TAG>" + htmlTags + ")"
+                        + "|(?<COMMENT>" + htmlComments + ")"
+                        + "|(?<STRING>" + htmlStrings + ")"
+        );
+        Map<String, String> htmlStyles = Map.of(
+                "TAG", "keyword",
+                "COMMENT", "comment",
+                "STRING", "string"
+        );
+        LANGUAGE_SYNTAX.put("html", new LanguageSyntax(htmlPattern, htmlStyles));
+
+        // CSS syntax
+        String cssSelectors = "[.#]?[a-zA-Z0-9_-]+";
+        String cssProperties = "\\b([a-z-]+)\\b(?=\\s*:)";
+        String cssValues = "[^;{}]+";
+        String cssComments = "/\\*(.|\\R)*?\\*/";
+        Pattern cssPattern = Pattern.compile(
+                "(?<PROPERTY>" + cssProperties + ")"
+                        + "|(?<VALUE>" + cssValues + ")"
+                        + "|(?<COMMENT>" + cssComments + ")"
+                        + "|(?<SELECTOR>" + cssSelectors + ")"
+        );
+        Map<String, String> cssStyles = Map.of(
+                "PROPERTY", "keyword",
+                "VALUE", "string",
+                "COMMENT", "comment",
+                "SELECTOR", "annotation"
+        );
+        LANGUAGE_SYNTAX.put("css", new LanguageSyntax(cssPattern, cssStyles));
     }
 }
 
