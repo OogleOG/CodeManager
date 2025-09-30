@@ -16,18 +16,22 @@ import javafx.scene.text.Font;
 import javafx.stage.FileChooser;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
+import org.fxmisc.richtext.CodeArea;
+import org.fxmisc.richtext.LineNumberFactory;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class CodeSnippetManagerFX extends Application {
     private final ObservableList<Snippet> snippets = FXCollections.observableArrayList();
     private final ListView<Snippet> listView = new ListView<>();
     private final TextField searchField = new TextField();
-    private final TextArea previewArea = new TextArea();
+    private final CodeArea previewArea = new CodeArea();
 
     private Button addBtn;
 
@@ -106,8 +110,14 @@ public class CodeSnippetManagerFX extends Application {
         header.getChildren().addAll(previewTitle, spacer, editBtn, deleteBtn);
 
         previewArea.setEditable(false);
-        previewArea.setFont(Font.font("Monospaced", 13));
-        previewArea.setWrapText(false);
+        previewArea.setWrapText(true);
+        previewArea.setParagraphGraphicFactory(LineNumberFactory.get(previewArea));
+        previewArea.getStylesheets().add("data:text/css," + encodeCss(
+                ".keyword { -fx-fill: #0000ff; -fx-font-weight: bold; }" +
+                        ".comment { -fx-fill: #008000; }" +
+                        ".string { -fx-fill: #a31515; }"
+        ));
+
 
         // Metadata strip
         HBox metaStrip = new HBox(12);
@@ -171,21 +181,35 @@ public class CodeSnippetManagerFX extends Application {
 
 
     private void showPreview(Snippet s) {
-        if (s == null) {
-            previewArea.clear();
-            return;
+        previewArea.clear();
+        if (s == null) return;
+
+        String code = s.code;
+        previewArea.replaceText(code);
+
+        // Define patterns
+        String KEYWORDS = "\\b(abstract|assert|boolean|break|byte|case|catch|char|class|const|continue|default|do|double|else|enum|extends|final|finally|float|for|goto|if|implements|import|instanceof|int|interface|long|native|new|package|private|protected|public|return|short|static|strictfp|super|switch|synchronized|this|throw|throws|transient|try|void|volatile|while)\\b";
+        String COMMENTS = "//[^\n]*" + "|" + "/\\*(.|\\R)*?\\*/";
+        String STRINGS = "\"([^\"\\\\]|\\\\.)*\"";
+
+        Pattern pattern = Pattern.compile(
+                "(?<KEYWORD>" + KEYWORDS + ")"
+                        + "|(?<COMMENT>" + COMMENTS + ")"
+                        + "|(?<STRING>" + STRINGS + ")"
+        );
+
+        Matcher matcher = pattern.matcher(code);
+        while (matcher.find()) {
+            if (matcher.group("KEYWORD") != null) {
+                previewArea.setStyleClass(matcher.start(), matcher.end(), "keyword");
+            } else if (matcher.group("COMMENT") != null) {
+                previewArea.setStyleClass(matcher.start(), matcher.end(), "comment");
+            } else if (matcher.group("STRING") != null) {
+                previewArea.setStyleClass(matcher.start(), matcher.end(), "string");
+            }
         }
-        StringBuilder sb = new StringBuilder();
-        sb.append("Title: ").append(s.title).append("\n");
-        sb.append("Language: ").append(s.language).append("\n");
-        sb.append("Tags: ").append(String.join(", ", s.tags)).append("\n");
-        sb.append("Created: ").append(formatDate(s.dateCreated)).append("\n");
-        sb.append("Modified: ").append(formatDate(s.lastModified)).append("\n");
-        sb.append("\n");
-        sb.append(s.code);
-        previewArea.setText(sb.toString());
-        previewArea.setScrollTop(0);
     }
+
 
     private void applyFilter(String q) {
         String ql = q == null ? "" : q.trim().toLowerCase();

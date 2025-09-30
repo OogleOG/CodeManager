@@ -25,6 +25,7 @@ val platform = when {
 val javafxVersion = "20.0.2"
 
 dependencies {
+    implementation("org.fxmisc.richtext:richtextfx:0.10.9") // latest version
     implementation("org.openjfx:javafx-base:$javafxVersion:$platform")
     implementation("org.openjfx:javafx-controls:$javafxVersion:$platform")
     implementation("org.openjfx:javafx-graphics:$javafxVersion:$platform")
