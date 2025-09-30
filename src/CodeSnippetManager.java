@@ -1,3 +1,4 @@
+import javax.imageio.ImageIO;
 import javax.swing.*;
 import javax.swing.border.*;
 import javax.swing.event.*;
@@ -54,9 +55,22 @@ public class CodeSnippetManager extends JFrame {
         setSize(1400, 800);
         setLocationRelativeTo(null);
 
+//        ImageIcon icon = new ImageIcon(getClass().getResource("icon.png"));
+//        setIconImage(icon.getImage());
+
         // Apply dark theme
         try {
             UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+            List<Image> icons = new ArrayList<>();
+            int[] sizes = {16,24,32,48,64,128};
+            for (int s : sizes) {
+                try {
+                    icons.add(ImageIO.read(new File("resources/icon_" + s + "x" + s + ".png")));
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                }
+            }
+            setIconImages(icons);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -866,7 +880,6 @@ public class CodeSnippetManager extends JFrame {
         if (file.exists()) {
             try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(file))) {
                 allSnippets = (List<Snippet>) ois.readObject();
-                loadSampleSnippets();
                 refreshView();
             } catch (IOException | ClassNotFoundException e) {
                 System.err.println("Error loading snippets: " + e.getMessage());
