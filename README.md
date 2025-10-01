@@ -3,6 +3,42 @@
 A lightweight and modern JavaFX desktop application for managing code snippets.  
 This app helps developers organize, search, and reuse their snippets with a clean and professional UI.
 
+CodeSnippetManager - Purpose & Benefits
+
+What does this program do?
+--------------------------
+CodeSnippetManager is a desktop application designed to help developers manage, search, and share code snippets easily.
+It allows you to:
+- Save useful code snippets for future reference.
+- Organize snippets by project, file, and function name.
+- Quickly search through your projects to find specific functions or methods.
+- Instantly create GitHub gists from selected snippets to share with others.
+
+Why would you use it?
+---------------------
+1. **Faster Development**
+   - Instead of rewriting common functions or digging through old projects, you can quickly find and reuse existing snippets.
+
+2. **Knowledge Sharing**
+   - Share useful functions or utilities with your team, community, or friends by creating a GitHub gist directly from the app.
+
+3. **Centralized Snippet Storage**
+   - Keep all your frequently used functions and snippets organized in one place, searchable by keyword.
+
+4. **Saves Time & Prevents Errors**
+   - No more copy-paste mistakes or forgetting linked code when sharing snippets — the tool helps extract and package complete functions.
+
+Who is it for?
+--------------
+- Individual developers who want to keep a personal snippet library.
+- Teams who frequently share code snippets across projects.
+- Open-source contributors who want to quickly create gists for bug fixes, utilities, or documentation.
+
+In short:
+----------
+CodeSnippetManager is your **personal code library + gist generator**, making it easier to organize, find, and share code across all your projects.
+
+
 ## ✨ Features
 - **Add, Edit, Delete Snippets** – Quickly manage your personal library of code snippets.  
 - **Search & Filter** – Find snippets by title, language, description, or tags.  
